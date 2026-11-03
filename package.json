@@ -4,7 +4,14 @@
   "private": true,
   "description": "A shared fictional coin market game",
   "scripts": {
+    "dev": "node server.js",
+    "build": "next build",
     "start": "node server.js",
     "test": "node --test"
+  },
+  "dependencies": {
+    "next": "^16.4.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   }
 }

@@ -13,6 +13,7 @@
 Node.js 18 以降で実行します。
 
 ```sh
+npm run build
 npm start
 ```
 

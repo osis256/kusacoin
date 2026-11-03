@@ -45,7 +45,7 @@ function gaussian(random) {
   return Math.sqrt(-2 * Math.log(first)) * Math.cos(2 * Math.PI * second);
 }
 
-function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'), clock = Date.now, random = Math.random } = {}) {
+function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'), clock = Date.now, random = Math.random, requestHandler } = {}) {
   const now = clock();
   const initial = { players: {}, market: { prices: {}, volatilityLevels: {} }, updatedAt: now, resetDate: japaneseDate(now) };
   try {
@@ -540,7 +540,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
       return;
     }
 
-    if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/client.js')) {
+    if (request.method === 'GET' && (url.pathname === '/index.html' || url.pathname === '/client.js')) {
       const file = url.pathname === '/client.js' ? 'client.js' : 'index.html';
       response.writeHead(200, {
         'Cache-Control': 'no-store',
@@ -548,6 +548,10 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         'X-Content-Type-Options': 'nosniff',
       });
       fs.createReadStream(path.join(ROOT, file)).pipe(response);
+      return;
+    }
+    if (requestHandler) {
+      await requestHandler(request, response);
       return;
     }
     sendJson(response, 404, { error: 'ページが見つかりません。' });
@@ -569,8 +573,15 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
 }
 
 if (require.main === module) {
-  const server = createGameServer();
-  server.listen(PORT, HOST, () => console.log(`Kusacoin is running at http://localhost:${PORT}`));
+  const next = require('next');
+  const app = next({ dev: process.env.NODE_ENV !== 'production', dir: ROOT });
+  app.prepare().then(() => {
+    const server = createGameServer({ requestHandler: app.getRequestHandler() });
+    server.listen(PORT, HOST, () => console.log(`Kusacoin is running at http://localhost:${PORT}`));
+  }).catch(error => {
+    console.error('Could not start Next.js:', error);
+    process.exit(1);
+  });
 }
 
 module.exports = { createGameServer };
