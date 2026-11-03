@@ -1,0 +1,10 @@
+{
+  "name": "kusacoin-game",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A shared fictional coin market game",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  }
+}
