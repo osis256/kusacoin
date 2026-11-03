@@ -1,7 +1,6 @@
 'use strict';
 
 (() => {
-  const TRADING_FEE_RATE = 0.005;
   const number = value => new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 2 }).format(value);
   const money = value => number(value * 100);
   let coins = [];
@@ -15,7 +14,7 @@
   let tradeMode = 'buy';
   let limitMode = 'buy';
   let advancedCoin = null;
-  let chartHours = 1;
+  let chartMinutes = 10;
   let toastTimer;
   let syncSequence = 0;
   let tradePending = false;
@@ -41,7 +40,7 @@
 
   function renderCoinOptions() {
     const select = document.getElementById('chart-coin');
-    select.innerHTML = coins.map(coin => `<option value="${coin.id}">${coin.id} / ${coin.name}</option>`).join('');
+    select.innerHTML = coins.map(coin => `<option value="${coin.id}">${coin.id} / ${coin.name}・${coin.characteristic}</option>`).join('');
     select.value = selectedCoin;
   }
 
@@ -49,14 +48,14 @@
     const host = document.getElementById('coin-list');
     host.innerHTML = coins.map(coin => {
       const price = market.prices[coin.id];
-      const change = market.changes24h[coin.id] || 0;
+      const change = market.changes10m[coin.id] || 0;
       const color = change >= 0 ? '#69a64d' : '#dc7561';
       const points = market.sparks[coin.id] || [price, price];
       const min = Math.min(...points);
       const max = Math.max(...points);
       const coords = points.map((value, index) => `${(index / Math.max(1, points.length - 1)) * 58},${20 - ((value - min) / (max - min || 1)) * 17}`).join(' ');
       return `<button type="button" class="coin-row${coin.id === selectedCoin ? ' selected' : ''}" data-coin="${coin.id}" aria-pressed="${coin.id === selectedCoin}">
-        <span class="coin-name"><i class="coin-icon" style="background:${coin.color}">${coin.id.slice(0, 2)}</i><span class="coin-label"><strong>${coin.name}</strong><small>${coin.id}</small></span></span>
+        <span class="coin-name"><i class="coin-icon" style="background:${coin.color}">${coin.id.slice(0, 2)}</i><span class="coin-label"><strong>${coin.name}</strong><small>${coin.id}</small><small class="coin-feature">${coin.characteristic}</small></span></span>
         <span class="mono">${money(price)}</span><span class="mono ${change >= 0 ? 'positive' : 'negative'}">${change >= 0 ? '+' : ''}${Math.round(change)}%</span>
         <svg class="mini-spark" viewBox="0 0 58 23" aria-hidden="true"><polyline points="${coords}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>`;
@@ -165,7 +164,7 @@
     const quantity = Math.max(0, Number(document.getElementById('limit-quantity').value) || 0);
     const total = quantity * ((Number(limitPrice.value) || 0) / 100);
     document.getElementById('limit-total').textContent = limitMode === 'buy'
-      ? `${money(total + total * TRADING_FEE_RATE)} 葉（手数料込）`
+      ? `${money(total)} 葉`
       : `${number(quantity)} ${coin.id}`;
     document.getElementById('place-limit-order').disabled = limitPending;
 
@@ -243,7 +242,8 @@
     context.strokeStyle = '#6b9f45'; context.lineWidth = 2; context.lineJoin = 'round'; context.lineCap = 'round'; context.stroke();
     const lastX = xFor(points.length - 1), lastY = yFor(points[points.length - 1]);
     context.beginPath(); context.arc(lastX, lastY, 3.5, 0, Math.PI * 2); context.fillStyle = '#6b9f45'; context.fill();
-    context.fillStyle = '#9aa097'; context.textAlign = 'left'; context.fillText(chartHours === 1 ? '1H AGO' : `${chartHours}H AGO`, left, height - 7);
+    const elapsedLabel = chartMinutes < 60 ? `${chartMinutes}M AGO` : `${chartMinutes / 60}H AGO`;
+    context.fillStyle = '#9aa097'; context.textAlign = 'left'; context.fillText(elapsedLabel, left, height - 7);
     context.textAlign = 'right'; context.fillText('NOW', right, height - 7); context.textAlign = 'left';
   }
 
@@ -257,10 +257,8 @@
       : `保有 ${number(availableCoins(coin.id))} ${coin.id}`;
     document.getElementById('order-price').textContent = `${money(price)} 葉っぱ`;
     const gross = quantity * price;
-    const fee = gross * TRADING_FEE_RATE;
-    const total = tradeMode === 'buy' ? gross + fee : gross - fee;
-    document.getElementById('order-total').textContent = `${money(total)} 葉っぱ`;
-    document.getElementById('total-label').textContent = tradeMode === 'buy' ? '概算合計（手数料込）' : '概算受取（手数料差引）';
+    document.getElementById('order-total').textContent = `${money(gross)} 葉っぱ`;
+    document.getElementById('total-label').textContent = tradeMode === 'buy' ? 'お支払い' : '受け取り';
     const button = document.getElementById('execute-trade');
     button.classList.toggle('sell', tradeMode === 'sell');
     button.disabled = tradePending;
@@ -273,15 +271,16 @@
   function refresh() {
     const coin = coinById[selectedCoin];
     const price = market.prices[selectedCoin];
-    const change = market.changes24h[selectedCoin] || 0;
+    const change = market.changes10m[selectedCoin] || 0;
     const timestamp = new Date(market.updatedAt);
     const shortClock = window.matchMedia('(max-width: 380px)').matches;
     document.getElementById('clock').textContent = `${(shortClock ? jstTime : jstDateTime).format(timestamp)} JST`;
     document.getElementById('chart-price').textContent = `${money(price)} 葉っぱ`;
     const changeElement = document.getElementById('chart-change');
-    changeElement.textContent = `${change >= 0 ? '+' : ''}${Math.round(change)}% / 24h`;
+    changeElement.textContent = `${change >= 0 ? '+' : ''}${Math.round(change)}% / 10分`;
     changeElement.className = `chart-change ${change >= 0 ? 'positive' : 'negative'}`;
     document.getElementById('chart-heading').textContent = `${coin.name} の値動き`;
+    document.getElementById('chart-characteristic').textContent = coin.characteristic;
     renderPortfolio();
     renderProfile();
     renderLeaderboard();
@@ -294,7 +293,7 @@
   async function syncState() {
     const sequence = ++syncSequence;
     try {
-      const query = new URLSearchParams({ coin: selectedCoin, hours: String(chartHours) });
+      const query = new URLSearchParams({ coin: selectedCoin, minutes: String(chartMinutes) });
       const response = await fetch(`/api/state?${query}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('サーバーに接続できません。');
       const snapshot = await response.json();
@@ -522,18 +521,19 @@
     const coin = coinById[selectedCoin];
     const price = market.prices[coin.id];
     const percent = Number(button.dataset.percent) / 100;
-    const max = tradeMode === 'buy' ? availableCash() / (price * (1 + TRADING_FEE_RATE)) : availableCoins(coin.id);
+    const max = tradeMode === 'buy' ? availableCash() / price : availableCoins(coin.id);
     document.getElementById('quantity').value = String(Math.floor(max * percent));
     renderOrder();
   });
   document.querySelectorAll('.range-btn').forEach(button => button.addEventListener('click', async () => {
-    chartHours = Number(button.dataset.range);
+    chartMinutes = Number(button.dataset.minutes);
     document.querySelectorAll('.range-btn').forEach(item => {
       const active = item === button;
       item.classList.toggle('active', active);
       item.setAttribute('aria-pressed', String(active));
     });
-    document.getElementById('chart-range-label').textContent = chartHours === 1 ? '過去1時間' : chartHours === 6 ? '過去6時間' : '過去1日';
+    const labels = { 1: '過去1分', 10: '過去10分', 30: '過去30分', 60: '過去1時間', 360: '過去6時間', 1440: '過去1日' };
+    document.getElementById('chart-range-label').textContent = labels[chartMinutes];
     await syncState();
   }));
   window.addEventListener('resize', () => { if (market) drawChart(); });

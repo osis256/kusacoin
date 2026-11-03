@@ -25,6 +25,15 @@ test('players keep separate balances while trades move the shared quote', async 
     const first = await firstResponse.json();
     const initialPrice = first.market.prices.KUSA;
     assert.ok(Object.values(first.market.prices).every(price => price === Math.round(price * 100) / 100));
+    assert.equal(first.coins.length, 8);
+    assert.ok(first.coins.every(coin => typeof coin.characteristic === 'string' && coin.characteristic.length > 0));
+    assert.ok(first.market.changes10m);
+    assert.equal('changes24h' in first.market, false);
+    for (const minutes of [1, 10, 30, 60, 360, 1440]) {
+      const rangeState = await fetch(`${origin}/api/state?coin=KUSA&minutes=${minutes}`).then(response => response.json());
+      const chart = rangeState.market.chart;
+      assert.equal(chart[chart.length - 1].at - chart[0].at, minutes * 60 * 1000);
+    }
     const secondResponse = await fetch(`${origin}/api/state`);
     const secondCookie = secondResponse.headers.get('set-cookie').split(';')[0];
     const second = await secondResponse.json();
@@ -82,7 +91,7 @@ test('players keep separate balances while trades move the shared quote', async 
     assert.ok(afterSell.market.prices.KUSA < sellPrice);
     assert.equal(afterSell.player.holdings.KUSA, 50);
     assert.equal(secondAfterSell.player.holdings.KUSA, undefined);
-    assert.ok(secondAfterSell.player.cash < 10000);
+    assert.ok(secondAfterSell.player.cash <= 10000);
 
     await close(server);
     server = createGameServer({ dataFile });
@@ -113,7 +122,7 @@ test('JST midnight resets daily assets and prices but keeps the player name', as
     const initial = await stateResponse.json();
     assert.equal(new Date(initial.market.updatedAt).toISOString(), new Date(now).toISOString());
     assert.equal(initial.market.prices.KUSA, 42);
-    assert.equal(Object.keys(initial.coins[0]).sort().join(','), 'color,id,name');
+    assert.equal(Object.keys(initial.coins[0]).sort().join(','), 'characteristic,color,id,name');
     assert.equal('volatilityLevels' in initial.market, false);
 
     const profileResponse = await fetch(`${origin}/api/profile`, {
@@ -132,8 +141,8 @@ test('JST midnight resets daily assets and prices but keeps the player name', as
 
     const beforeReset = await fetch(`${origin}/api/state`, { headers: { Cookie: cookie } }).then(response => response.json());
     assert.equal(beforeReset.leaderboard[0].username, 'なずな');
-    assert.ok(beforeReset.leaderboard[0].totalAssets < 10000);
-    assert.ok(beforeReset.leaderboard[0].totalAssets > 9900);
+    assert.ok(beforeReset.leaderboard[0].totalAssets <= 10000);
+    assert.ok(beforeReset.leaderboard[0].totalAssets >= 9900);
     assert.equal(beforeReset.player.holdings.KUSA, 20);
 
     now = Date.UTC(2026, 10, 3, 15, 0, 0);

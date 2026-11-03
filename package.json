@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node server.js",
     "build": "next build",
+    "postbuild": "node scripts/prepare-standalone.js",
     "start": "node server.js",
     "test": "node --test"
   },

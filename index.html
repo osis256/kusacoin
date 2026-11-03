@@ -102,7 +102,7 @@
     .chart-wrap { height: 220px; padding: 8px 13px 0; }
     canvas { width: 100%; height: 100%; display: block; }
     .chart-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 19px 14px; color: #858c84; font-family: var(--mono); font-size: 9px; }
-    .ranges { display: flex; gap: 3px; }
+    .ranges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; }
     .range-btn { padding: 5px 8px; border: 0; border-radius: 4px; background: transparent; color: #747d73; cursor: pointer; font-family: var(--mono); font-size: 10px; }
     .range-btn.active { background: #eff5e9; color: #436c2b; font-weight: 500; }
 
@@ -115,6 +115,7 @@
     .coin-label { min-width: 0; }
     .coin-label strong { display: block; overflow: hidden; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
     .coin-label small { display: block; margin-top: 2px; color: #8b9189; font-family: var(--mono); font-size: 9px; }
+    .coin-label .coin-feature { color: #66765d; font-family: var(--sans); font-size: 9px; line-height: 1.35; white-space: normal; }
     .mono { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
     .mini-spark { width: 58px; height: 23px; justify-self: end; }
     .table-foot { padding: 10px 19px 12px; border-top: 1px solid var(--line); color: #858c84; font-size: 10px; }
@@ -306,19 +307,19 @@
       <div class="left-stack">
         <section class="panel" aria-labelledby="chart-heading">
           <div class="panel-head">
-            <div><h2 class="panel-title" id="chart-heading">コインの値動き</h2><p class="panel-subtitle">共通時刻に連動する架空の相場</p></div>
+            <div><h2 class="panel-title" id="chart-heading">コインの値動き</h2><p class="panel-subtitle"><span id="chart-characteristic">値動きの特徴</span>・架空相場</p></div>
             <select class="coin-select" id="chart-coin" aria-label="チャートに表示するコイン"></select>
           </div>
           <div class="chart-quote"><span class="chart-price" id="chart-price">--</span><span class="chart-change" id="chart-change">--</span></div>
           <div class="chart-wrap"><canvas id="price-chart" role="img" aria-label="選択中コインの価格チャート"></canvas></div>
-          <div class="chart-foot"><span id="chart-range-label">過去1時間</span><div class="ranges" role="group" aria-label="チャートの期間"><button class="range-btn active" data-range="1" aria-pressed="true">1H</button><button class="range-btn" data-range="6" aria-pressed="false">6H</button><button class="range-btn" data-range="24" aria-pressed="false">1D</button></div><span>LEAF / COIN</span></div>
+          <div class="chart-foot"><span id="chart-range-label">過去10分</span><div class="ranges" role="group" aria-label="チャートの期間"><button class="range-btn" data-minutes="1" aria-pressed="false">1m</button><button class="range-btn active" data-minutes="10" aria-pressed="true">10m</button><button class="range-btn" data-minutes="30" aria-pressed="false">30m</button><button class="range-btn" data-minutes="60" aria-pressed="false">1h</button><button class="range-btn" data-minutes="360" aria-pressed="false">6h</button><button class="range-btn" data-minutes="1440" aria-pressed="false">1d</button></div><span>LEAF / COIN</span></div>
         </section>
 
         <section class="panel" aria-labelledby="market-heading">
           <div class="panel-head"><div><h2 class="panel-title" id="market-heading">コイン一覧</h2><p class="panel-subtitle">価格はすべてゲーム内の架空データです</p></div><span class="sync-label"><i class="sync-dot"></i>LIVE</span></div>
-          <div class="table-head" aria-hidden="true"><span>コイン</span><span>価格</span><span>24h の変動</span><span>トレンド</span></div>
+          <div class="table-head" aria-hidden="true"><span>コイン / 特徴</span><span>価格</span><span>10分の変動</span><span>トレンド</span></div>
           <div id="coin-list"></div>
-          <div class="table-foot">行を選ぶと、チャートと注文画面のコインが切り替わります。</div>
+          <div class="table-foot">値動きの特徴は目安です。行を選ぶとチャートと注文画面が切り替わります。</div>
         </section>
       </div>
 
@@ -328,7 +329,7 @@
           <button class="trade-view-tab" id="advanced-trading-tab" type="button" role="tab" aria-controls="advanced-trading-panel" aria-selected="false">上級者</button>
         </div>
         <aside class="panel trade-panel trade-view" id="market-trading-panel" role="tabpanel" aria-labelledby="market-trading-tab">
-          <div class="trade-head"><h2 id="trade-heading">かんたん取引</h2><p>売買手数料 0.5%・注文影響には上限があります</p><div class="trade-tabs" role="tablist" aria-label="取引の種類"><button class="trade-tab active buy" id="buy-tab" role="tab" aria-selected="true">買う</button><button class="trade-tab" id="sell-tab" role="tab" aria-selected="false">売る</button></div></div>
+          <div class="trade-head"><h2 id="trade-heading">かんたん取引</h2><p>注文による価格変動には上限があります</p><div class="trade-tabs" role="tablist" aria-label="取引の種類"><button class="trade-tab active buy" id="buy-tab" role="tab" aria-selected="true">買う</button><button class="trade-tab" id="sell-tab" role="tab" aria-selected="false">売る</button></div></div>
           <div class="trade-body">
             <label class="field-label" for="quantity"><span>数量</span><span id="available-label">残高 1,000,000 葉っぱ</span></label>
             <div class="input-wrap"><input id="quantity" type="number" min="1" step="1" value="10" inputmode="numeric" aria-label="取引するコインの数量"><span id="quantity-unit">KUSA</span></div>

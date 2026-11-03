@@ -10,14 +10,13 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const STARTING_CASH = 10000;
 const TICK_MS = 3000;
-const TRADING_FEE_RATE = 0.005;
 const MAX_TRADE_IMPACT_PER_WINDOW = 0.0025;
 const RECOVERY_THRESHOLD = 100;
 const RECOVERY_DELAY_MS = 60 * 1000;
 const RECOVERY_GRANT = 500;
-const HISTORY_SAMPLE_MS = 10000;
+const HISTORY_SAMPLE_MS = TICK_MS;
 const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
-const MAX_HISTORY_POINTS = 10000;
+const MAX_HISTORY_POINTS = 30000;
 const PLAYER_COOKIE = 'kusa_player';
 const ROOT = __dirname;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -190,11 +189,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
   }
 
   function reservedCash(player) {
-    return player.orders.reduce((sum, order) => {
-      if (order.side !== 'buy') return sum;
-      const amount = order.limitPrice * order.quantity;
-      return sum + amount + tradeFee(amount);
-    }, 0);
+    return player.orders.reduce((sum, order) => sum + (order.side === 'buy' ? order.limitPrice * order.quantity : 0), 0);
   }
 
   function reservedCoins(player, coinId) {
@@ -220,10 +215,6 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
     return nextPrice;
   }
 
-  function tradeFee(amount) {
-    return roundMoney(amount * TRADING_FEE_RATE);
-  }
-
   function matchLimitOrders(now) {
     for (const player of Object.values(game.players)) {
       const remaining = [];
@@ -237,29 +228,30 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
 
         const coin = coins.find(item => item.id === order.coin);
         const impact = getTradeImpact(coin, order.quantity, now);
-        const fillPrice = order.side === 'buy' ? roundPrice(price * Math.exp(impact)) : price;
-        if (order.side === 'buy' && fillPrice > order.limitPrice) {
+        const direction = order.side === 'buy' ? 1 : -1;
+        const fillPrice = roundPrice(price * Math.exp(direction * impact / 2));
+        if ((order.side === 'buy' && fillPrice > order.limitPrice)
+          || (order.side === 'sell' && fillPrice < order.limitPrice)) {
           remaining.push(order);
           continue;
         }
         const amount = roundMoney(fillPrice * order.quantity);
-        const fee = tradeFee(amount);
         const owned = Number(player.holdings[order.coin]) || 0;
         if (order.side === 'buy') {
-          if (amount + fee > player.cash + 0.000001) {
+          if (amount > player.cash + 0.000001) {
             remaining.push(order);
             continue;
           }
-          player.cash = roundMoney(player.cash - amount - fee);
+          player.cash = roundMoney(player.cash - amount);
           player.holdings[order.coin] = Math.round((owned + order.quantity) * 100) / 100;
         } else {
           if (order.quantity > owned + 0.000001) continue;
           player.holdings[order.coin] = Math.round((owned - order.quantity) * 100) / 100;
           if (player.holdings[order.coin] < 0.01) delete player.holdings[order.coin];
-          player.cash = roundMoney(player.cash + amount - fee);
+          player.cash = roundMoney(player.cash + amount);
         }
 
-        player.trades.unshift({ id: crypto.randomUUID(), orderType: 'limit', coin: order.coin, side: order.side, quantity: order.quantity, price: fillPrice, fee, at: now });
+        player.trades.unshift({ id: crypto.randomUUID(), orderType: 'limit', coin: order.coin, side: order.side, quantity: order.quantity, price: fillPrice, at: now });
         player.trades = player.trades.slice(0, 20);
         applyTradeImpact(coin, order.side, impact, now);
       }
@@ -323,22 +315,22 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
     return Array.from({ length: limit }, (_, index) => points[Math.round(index * (points.length - 1) / (limit - 1))]);
   }
 
-  function marketSnapshot(coinId, hours) {
+  function marketSnapshot(coinId, minutes) {
     const now = clock();
-    const changes24h = {};
+    const changes10m = {};
     const sparks = {};
     for (const coin of coins) {
       const points = game.market.history[coin.id];
-      const threshold = now - HISTORY_WINDOW_MS;
+      const threshold = now - 10 * 60 * 1000;
       let reference = points[0];
       for (const point of points) {
         if (point.at > threshold) break;
         reference = point;
       }
-      changes24h[coin.id] = (game.market.prices[coin.id] / reference.price - 1) * 100;
-      sparks[coin.id] = sampled(points.filter(point => point.at >= now - 60 * 60 * 1000), 14).map(point => point.price);
+      changes10m[coin.id] = (game.market.prices[coin.id] / reference.price - 1) * 100;
+      sparks[coin.id] = sampled(points.filter(point => point.at >= threshold), 14).map(point => point.price);
     }
-    const start = now - hours * 60 * 60 * 1000;
+    const start = now - minutes * 60 * 1000;
     const chart = sampled(game.market.history[coinId].filter(point => point.at >= start), 61)
       .map(point => ({ at: point.at, price: point.price }));
     const currentPrice = game.market.prices[coinId];
@@ -346,7 +338,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
       chart.push({ at: now, price: currentPrice });
     }
     if (chart.length === 1) chart.unshift({ at: start, price: chart[0].price });
-    return { prices: game.market.prices, changes24h, sparks, chart, updatedAt: game.updatedAt };
+    return { prices: game.market.prices, changes10m, sparks, chart, updatedAt: game.updatedAt };
   }
 
   function sendJson(response, status, value) {
@@ -356,6 +348,15 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
       'X-Content-Type-Options': 'nosniff',
     });
     response.end(JSON.stringify(value));
+  }
+
+  function isSameOrigin(request, origin) {
+    try {
+      const requestHost = request.headers['x-forwarded-host'] || request.headers.host;
+      return new URL(origin).host === requestHost;
+    } catch (_) {
+      return false;
+    }
   }
 
   async function readJson(request) {
@@ -376,15 +377,15 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
       const player = game.players[playerId];
       if (!player) game.players[playerId] = { username: 'ゲスト', cash: STARTING_CASH, holdings: {}, trades: [], orders: [] };
       const coinId = coins.some(coin => coin.id === url.searchParams.get('coin')) ? url.searchParams.get('coin') : coins[0].id;
-      const requestedHours = Number(url.searchParams.get('hours'));
-      const hours = [1, 6, 24].includes(requestedHours) ? requestedHours : 1;
+      const requestedMinutes = Number(url.searchParams.get('minutes'));
+      const minutes = [1, 10, 30, 60, 360, 1440].includes(requestedMinutes) ? requestedMinutes : 10;
       sendJson(response, 200, {
         startingCash: STARTING_CASH,
         player: game.players[playerId],
         recovery: recoveryStatus(game.players[playerId], clock()),
         leaderboard: getLeaderboard(),
-        coins: coins.map(({ id, name, color }) => ({ id, name, color })),
-        market: marketSnapshot(coinId, hours),
+        coins: coins.map(({ id, name, color, characteristic }) => ({ id, name, color, characteristic })),
+        market: marketSnapshot(coinId, minutes),
       });
       return;
     }
@@ -396,7 +397,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         return;
       }
       const origin = request.headers.origin;
-      if (origin && new URL(origin).host !== request.headers.host) {
+      if (origin && !isSameOrigin(request, origin)) {
         sendJson(response, 403, { error: 'このリクエストは許可されていません。' });
         return;
       }
@@ -420,7 +421,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         return;
       }
       const origin = request.headers.origin;
-      if (origin && new URL(origin).host !== request.headers.host) {
+      if (origin && !isSameOrigin(request, origin)) {
         sendJson(response, 403, { error: 'この取引リクエストは許可されていません。' });
         return;
       }
@@ -437,11 +438,11 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
       const marketPrice = game.market.prices[coin.id];
       const now = clock();
       const impact = getTradeImpact(coin, quantity, now);
-      const price = body.side === 'buy' ? roundPrice(marketPrice * Math.exp(impact)) : marketPrice;
+      const direction = body.side === 'buy' ? 1 : -1;
+      const price = roundPrice(marketPrice * Math.exp(direction * impact / 2));
       const amount = roundMoney(price * quantity);
-      const fee = tradeFee(amount);
       const owned = Number(player.holdings[coin.id]) || 0;
-      if (body.side === 'buy' && amount + fee > player.cash - reservedCash(player) + 0.000001) {
+      if (body.side === 'buy' && amount > player.cash - reservedCash(player) + 0.000001) {
         sendJson(response, 409, { error: '葉っぱが足りません。数量を調整してください。' });
         return;
       }
@@ -451,21 +452,20 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
       }
 
       if (body.side === 'buy') {
-        player.cash = roundMoney(player.cash - amount - fee);
+        player.cash = roundMoney(player.cash - amount);
         player.holdings[coin.id] = Math.round((owned + quantity) * 100) / 100;
       } else {
-        player.cash = roundMoney(player.cash + amount - fee);
+        player.cash = roundMoney(player.cash + amount);
         player.holdings[coin.id] = Math.round((owned - quantity) * 100) / 100;
         if (player.holdings[coin.id] < 0.01) delete player.holdings[coin.id];
       }
-      player.trades.unshift({ id: crypto.randomUUID(), orderType: 'market', coin: coin.id, side: body.side, quantity, price, fee, at: now });
+      player.trades.unshift({ id: crypto.randomUUID(), orderType: 'market', coin: coin.id, side: body.side, quantity, price, at: now });
       player.trades = player.trades.slice(0, 20);
 
       applyTradeImpact(coin, body.side, impact, now);
       matchLimitOrders(now);
       persist();
-      const total = body.side === 'buy' ? amount + fee : amount - fee;
-      sendJson(response, 200, { ok: true, fill: { coin: coin.id, side: body.side, quantity, price, amount, fee, total } });
+      sendJson(response, 200, { ok: true, fill: { coin: coin.id, side: body.side, quantity, price, amount, total: amount } });
       return;
     }
 
@@ -476,7 +476,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         return;
       }
       const origin = request.headers.origin;
-      if (origin && new URL(origin).host !== request.headers.host) {
+      if (origin && !isSameOrigin(request, origin)) {
         sendJson(response, 403, { error: 'この注文リクエストは許可されていません。' });
         return;
       }
@@ -497,7 +497,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         sendJson(response, 409, { error: '未約定注文は20件までです。' });
         return;
       }
-      const reservation = limitPrice * quantity + tradeFee(limitPrice * quantity);
+      const reservation = limitPrice * quantity;
       if (body.side === 'buy' && reservation > player.cash - reservedCash(player) + 0.000001) {
         sendJson(response, 409, { error: '指値注文に必要な葉っぱが足りません。' });
         return;
@@ -524,7 +524,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         return;
       }
       const origin = request.headers.origin;
-      if (origin && new URL(origin).host !== request.headers.host) {
+      if (origin && !isSameOrigin(request, origin)) {
         sendJson(response, 403, { error: 'この取消リクエストは許可されていません。' });
         return;
       }
