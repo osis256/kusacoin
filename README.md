@@ -1,0 +1,2 @@
+# kusacoin
+kusacoinで遊べ
