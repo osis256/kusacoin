@@ -329,7 +329,7 @@
           <button class="trade-view-tab" id="advanced-trading-tab" type="button" role="tab" aria-controls="advanced-trading-panel" aria-selected="false">上級者</button>
         </div>
         <aside class="panel trade-panel trade-view" id="market-trading-panel" role="tabpanel" aria-labelledby="market-trading-tab">
-          <div class="trade-head"><h2 id="trade-heading">かんたん取引</h2><p>注文による価格変動には上限があります</p><div class="trade-tabs" role="tablist" aria-label="取引の種類"><button class="trade-tab active buy" id="buy-tab" role="tab" aria-selected="true">買う</button><button class="trade-tab" id="sell-tab" role="tab" aria-selected="false">売る</button></div></div>
+          <div class="trade-head"><h2 id="trade-heading">かんたん取引</h2><p>売買ごとに1%の手数料がかかります。相場は5分ごとにも変動します。</p><div class="trade-tabs" role="tablist" aria-label="取引の種類"><button class="trade-tab active buy" id="buy-tab" role="tab" aria-selected="true">買う</button><button class="trade-tab" id="sell-tab" role="tab" aria-selected="false">売る</button></div></div>
           <div class="trade-body">
             <label class="field-label" for="quantity"><span>数量</span><span id="available-label">残高 1,000,000 葉っぱ</span></label>
             <div class="input-wrap"><input id="quantity" type="number" min="1" step="1" value="10" inputmode="numeric" aria-label="取引するコインの数量"><span id="quantity-unit">KUSA</span></div>
@@ -366,7 +366,7 @@
       <ol class="leaderboard-list" id="leaderboard-list" aria-live="polite"><li class="leaderboard-empty">ランキングを読み込み中...</li></ol>
     </section>
 
-    <div class="bottom-note"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M12 11v5m0-8h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>コインと価格はすべて架空です。所持金と各コイン価格は毎日 00:00 JST に初期化されます。相場は全プレイヤー共通です。</span></div>
+    <div class="bottom-note"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><path d="M12 11v5m0-8h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>コインと価格はすべて架空です。売買ごとに1%の手数料がかかり、相場は取引成立時と5分ごとに変動します。所持金と価格は毎日 00:00 JST に初期化されます。相場は全プレイヤー共通です。</span></div>
   </main>
   <div class="leaf-burst" id="leaf-burst" aria-hidden="true"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

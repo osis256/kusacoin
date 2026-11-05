@@ -7,6 +7,7 @@
   let coinById = {};
   let state = null;
   let market = null;
+  let tradeFeeRate = 0.01;
   let leaderboard = [];
   let recovery = null;
   let lastRecoveryNoticeId = null;
@@ -28,8 +29,16 @@
     timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
   });
 
+  function estimatedTradeFee(amount) {
+    return amount > 0 ? Math.max(0.01, Math.ceil(amount * tradeFeeRate * 100 - 1e-9) / 100) : 0;
+  }
+
   function availableCash() {
-    const reserved = (state.orders || []).reduce((sum, order) => sum + (order.side === 'buy' ? order.limitPrice * order.quantity : 0), 0);
+    const reserved = (state.orders || []).reduce((sum, order) => {
+      if (order.side !== 'buy') return sum;
+      const amount = Math.round(order.limitPrice * order.quantity * 100) / 100;
+      return sum + amount + estimatedTradeFee(amount);
+    }, 0);
     return Math.max(0, state.cash - reserved);
   }
 
@@ -160,9 +169,10 @@
     document.getElementById('limit-available').textContent = limitMode === 'buy'
       ? `利用可能 ${money(availableCash())} 葉`
       : `売却可能 ${number(availableCoins(coin.id))} 枚`;
-    document.getElementById('limit-total-label').textContent = limitMode === 'buy' ? '必要な葉っぱ' : '売却数量';
+    document.getElementById('limit-total-label').textContent = limitMode === 'buy' ? '必要な葉っぱ（手数料込）' : '売却数量';
     const quantity = Math.max(0, Number(document.getElementById('limit-quantity').value) || 0);
-    const total = quantity * ((Number(limitPrice.value) || 0) / 100);
+    const amount = quantity * ((Number(limitPrice.value) || 0) / 100);
+    const total = amount + estimatedTradeFee(amount);
     document.getElementById('limit-total').textContent = limitMode === 'buy'
       ? `${money(total)} 葉`
       : `${number(quantity)} ${coin.id}`;
@@ -257,8 +267,10 @@
       : `保有 ${number(availableCoins(coin.id))} ${coin.id}`;
     document.getElementById('order-price').textContent = `${money(price)} 葉っぱ`;
     const gross = quantity * price;
-    document.getElementById('order-total').textContent = `${money(gross)} 葉っぱ`;
-    document.getElementById('total-label').textContent = tradeMode === 'buy' ? 'お支払い' : '受け取り';
+    const fee = estimatedTradeFee(gross);
+    const total = tradeMode === 'buy' ? gross + fee : Math.max(0, gross - fee);
+    document.getElementById('order-total').textContent = `${money(total)} 葉っぱ`;
+    document.getElementById('total-label').textContent = tradeMode === 'buy' ? 'お支払い（手数料込）' : '受け取り（手数料差引）';
     const button = document.getElementById('execute-trade');
     button.classList.toggle('sell', tradeMode === 'sell');
     button.disabled = tradePending;
@@ -300,6 +312,7 @@
       if (sequence !== syncSequence) return;
       const previousTradeIds = state ? new Set(state.trades.map(trade => trade.id)) : null;
       coins = snapshot.coins;
+      tradeFeeRate = snapshot.tradeFeeRate;
       coinById = Object.fromEntries(coins.map(coin => [coin.id, coin]));
       if (!coinById[selectedCoin]) selectedCoin = coins[0].id;
       state = { ...snapshot.player, startingCash: snapshot.startingCash };
@@ -538,6 +551,8 @@
   }));
   window.addEventListener('resize', () => { if (market) drawChart(); });
   window.addEventListener('focus', syncState);
+  const marketEvents = new EventSource('/api/market-events');
+  marketEvents.addEventListener('open', syncState);
+  marketEvents.addEventListener('message', syncState);
   syncState();
-  setInterval(syncState, 2500);
 })();
