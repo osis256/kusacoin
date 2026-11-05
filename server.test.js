@@ -8,6 +8,42 @@ const { after, test } = require('node:test');
 const { createGameServer } = require('./server');
 const coins = require('./coins');
 
+test('configured static site origins can use the credentialed game API', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kusacoin-cors-test-'));
+  const server = createGameServer({ dataFile: path.join(directory, 'state.json'), allowedOrigin: 'https://game.example.test' });
+  const listen = instance => new Promise(resolve => instance.listen(0, '127.0.0.1', resolve));
+  const close = instance => new Promise((resolve, reject) => instance.close(error => error ? reject(error) : resolve()));
+  await listen(server);
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    const preflight = await fetch(`${origin}/api/trade`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://game.example.test',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type',
+      },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://game.example.test');
+    assert.equal(preflight.headers.get('access-control-allow-credentials'), 'true');
+
+    const stateResponse = await fetch(`${origin}/api/state`, { headers: { Origin: 'https://game.example.test' } });
+    assert.equal(stateResponse.headers.get('access-control-allow-origin'), 'https://game.example.test');
+    assert.match(stateResponse.headers.get('set-cookie'), /SameSite=None;.*Secure/);
+
+    const rejected = await fetch(`${origin}/api/trade`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://untrusted.example.test', 'Access-Control-Request-Method': 'POST' },
+    });
+    assert.equal(rejected.status, 403);
+  } finally {
+    await close(server);
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('players keep separate balances while trades move the shared quote', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'kusacoin-test-'));
   const dataFile = path.join(directory, 'state.json');

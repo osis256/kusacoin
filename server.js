@@ -49,7 +49,13 @@ function gaussian(random) {
   return Math.sqrt(-2 * Math.log(first)) * Math.cos(2 * Math.PI * second);
 }
 
-function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'), clock = Date.now, random = Math.random, requestHandler } = {}) {
+function createGameServer({
+  dataFile = path.join(ROOT, 'data', 'game-state.json'),
+  clock = Date.now,
+  random = Math.random,
+  requestHandler,
+  allowedOrigin = process.env.ALLOWED_ORIGIN || '',
+} = {}) {
   const now = clock();
   const initial = { players: {}, market: { prices: {}, volatilityLevels: {}, lastTickAt: now }, updatedAt: now, resetDate: japaneseDate(now) };
   try {
@@ -325,8 +331,14 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
     if (!create) return null;
 
     const id = crypto.randomUUID();
-    const secure = request.socket.encrypted || request.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
-    response.setHeader('Set-Cookie', `${PLAYER_COOKIE}=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${secure}`);
+    const crossOrigin = request.headers.origin && !isSameOrigin(request, request.headers.origin);
+    const crossOriginAllowed = crossOrigin && allowedOrigin
+      && isRequestOriginAllowed(request, request.headers.origin);
+    const sameSite = crossOriginAllowed ? 'None' : 'Lax';
+    const secure = request.socket.encrypted || request.headers['x-forwarded-proto'] === 'https' || crossOriginAllowed
+      ? '; Secure'
+      : '';
+    response.setHeader('Set-Cookie', `${PLAYER_COOKIE}=${id}; HttpOnly; SameSite=${sameSite}; Path=/; Max-Age=31536000${secure}`);
     if (!game.players[id]) game.players[id] = { username: 'ゲスト', cash: STARTING_CASH, holdings: {}, trades: [], orders: [], recoveryStartedAt: null, recoveryDate: '', recoveryNotice: null };
     persist();
     return id;
@@ -394,6 +406,24 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
     }
   }
 
+  function isRequestOriginAllowed(request, origin) {
+    if (isSameOrigin(request, origin)) return true;
+    try {
+      return Boolean(allowedOrigin) && new URL(origin).origin === new URL(allowedOrigin).origin;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setCorsHeaders(request, response) {
+    const origin = request.headers.origin;
+    if (!origin || !isRequestOriginAllowed(request, origin)) return false;
+    response.setHeader('Access-Control-Allow-Origin', origin);
+    response.setHeader('Access-Control-Allow-Credentials', 'true');
+    response.setHeader('Vary', 'Origin');
+    return true;
+  }
+
   async function readJson(request) {
     let body = '';
     for await (const chunk of request) {
@@ -406,6 +436,21 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
 
   async function handle(request, response) {
     const url = new URL(request.url, 'http://localhost');
+    const originAllowed = setCorsHeaders(request, response);
+    if (request.method === 'OPTIONS') {
+      if (!originAllowed) {
+        sendJson(response, 403, { error: 'このリクエストは許可されていません。' });
+        return;
+      }
+      response.writeHead(204, {
+        'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '600',
+      });
+      response.end();
+      return;
+    }
+
     if (url.pathname === '/api/market-events' && request.method === 'GET') {
       response.writeHead(200, {
         'Cache-Control': 'no-cache',
@@ -446,7 +491,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         return;
       }
       const origin = request.headers.origin;
-      if (origin && !isSameOrigin(request, origin)) {
+      if (origin && !isRequestOriginAllowed(request, origin)) {
         sendJson(response, 403, { error: 'このリクエストは許可されていません。' });
         return;
       }
@@ -470,7 +515,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         return;
       }
       const origin = request.headers.origin;
-      if (origin && !isSameOrigin(request, origin)) {
+      if (origin && !isRequestOriginAllowed(request, origin)) {
         sendJson(response, 403, { error: 'この取引リクエストは許可されていません。' });
         return;
       }
@@ -533,7 +578,7 @@ function createGameServer({ dataFile = path.join(ROOT, 'data', 'game-state.json'
         return;
       }
       const origin = request.headers.origin;
-      if (origin && !isSameOrigin(request, origin)) {
+      if (origin && !isRequestOriginAllowed(request, origin)) {
         sendJson(response, 403, { error: 'この注文リクエストは許可されていません。' });
         return;
       }

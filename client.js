@@ -28,6 +28,11 @@
   const jstTime = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
   });
+  const apiBaseUrl = (window.KUSACOIN_API_BASE_URL || window.location.origin).replace(/\/+$/, '');
+
+  function apiUrl(path) {
+    return `${apiBaseUrl}${path}`;
+  }
 
   function estimatedTradeFee(amount) {
     return amount > 0 ? Math.max(0.01, Math.ceil(amount * tradeFeeRate * 100 - 1e-9) / 100) : 0;
@@ -306,7 +311,7 @@
     const sequence = ++syncSequence;
     try {
       const query = new URLSearchParams({ coin: selectedCoin, minutes: String(chartMinutes) });
-      const response = await fetch(`/api/state?${query}`, { cache: 'no-store' });
+      const response = await fetch(apiUrl(`/api/state?${query}`), { cache: 'no-store', credentials: 'include' });
       if (!response.ok) throw new Error('サーバーに接続できません。');
       const snapshot = await response.json();
       if (sequence !== syncSequence) return;
@@ -391,9 +396,10 @@
     tradePending = true;
     renderOrder();
     try {
-      const response = await fetch('/api/trade', {
+      const response = await fetch(apiUrl('/api/trade'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ coin: selectedCoin, side: tradeMode, quantity }),
       });
       const result = await response.json();
@@ -420,9 +426,10 @@
     limitPending = true;
     renderAdvanced();
     try {
-      const response = await fetch('/api/orders', {
+      const response = await fetch(apiUrl('/api/orders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ coin: selectedCoin, side: limitMode, quantity, limitPrice: limitPrice / 100 }),
       });
       const result = await response.json();
@@ -441,7 +448,10 @@
   async function cancelLimitOrder(orderId) {
     const notice = document.getElementById('limit-notice');
     try {
-      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, { method: 'DELETE' });
+      const response = await fetch(apiUrl(`/api/orders/${encodeURIComponent(orderId)}`), {
+        method: 'DELETE',
+        credentials: 'include',
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || '注文を取り消せませんでした。');
       notice.textContent = '指値注文を取り消しました。';
@@ -479,9 +489,10 @@
     button.disabled = true;
     notice.textContent = '保存中...';
     try {
-      const response = await fetch('/api/profile', {
+      const response = await fetch(apiUrl('/api/profile'), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ username: document.getElementById('username-input').value }),
       });
       const result = await response.json();
@@ -551,7 +562,7 @@
   }));
   window.addEventListener('resize', () => { if (market) drawChart(); });
   window.addEventListener('focus', syncState);
-  const marketEvents = new EventSource('/api/market-events');
+  const marketEvents = new EventSource(apiUrl('/api/market-events'), { withCredentials: true });
   marketEvents.addEventListener('open', syncState);
   marketEvents.addEventListener('message', syncState);
   syncState();
